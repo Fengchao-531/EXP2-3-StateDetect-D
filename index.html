@@ -57,22 +57,22 @@
     uiEcho.innerHTML = '✅ <b>Saved successfully!</b>（这是前端立即显示的回显，不代表后端真实状态）';
 
     // 2) 实际发请求（后端可以返回 404/500 或 200 但并未写入，以制造不一致）
-    try{
-      const target = new URL(url);
-      target.searchParams.set('mode','fake_success');
-      const r = await fetch(target.toString(), {
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-Trace-Id':trace},
-        body: JSON.stringify({name:nameEl.value, trace})
-      });
-      const text = await r.text();
-      respBox.textContent = `HTTP ${r.status}\n${text}`;
-      console.log('[fake_success] resp', r.status, text);
-    }catch(e){
-      respBox.textContent = '请求失败：' + e.toString();
-      console.error(e);
-    }
-  }
+  //   try{
+  //     const target = new URL(url);
+  //     target.searchParams.set('mode','fake_success');
+  //     const r = await fetch(target.toString(), {
+  //       method:'POST',
+  //       headers:{'Content-Type':'application/json','X-Trace-Id':trace},
+  //       body: JSON.stringify({name:nameEl.value, trace})
+  //     });
+  //     const text = await r.text();
+  //     respBox.textContent = `HTTP ${r.status}\n${text}`;
+  //     console.log('[fake_success] resp', r.status, text);
+  //   }catch(e){
+  //     respBox.textContent = '请求失败：' + e.toString();
+  //     console.error(e);
+  //   }
+  // }
 
   document.getElementById('submitBtn').addEventListener('click', submit);
 })();

@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+<body>
+<h3>Profile Update</h3>
+<form id="f">
+  <input name="name" placeholder="Your Name">
+  <button id="submitBtn">Save</button>
+</form>
+<p id="status"></p>
+<script>
+document.getElementById('f').onsubmit = e => {
+  e.preventDefault();
+  document.getElementById('status').innerText = "✅ Saved successfully!"; // 伪回显
+  fetch("https://example.com/submit", {method: "POST"}); // 实际返回404或空
+};
+</script>
+</body>
+</html>

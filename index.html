@@ -1,18 +1,81 @@
 <!doctype html>
-<html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Fake Success — 前端回显成功，后端未必成功</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px;background:#f7f9fc}
+  .card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 6px 18px rgba(15,30,60,.06);max-width:820px;margin:0 auto}
+  label{display:block;margin:8px 0 4px;font-weight:600}
+  input[type=text]{width:100%;padding:9px;border:1px solid #d7dbe6;border-radius:8px}
+  button{margin-top:10px;padding:10px 14px;border-radius:8px;border:none;background:#0b66ff;color:#fff;cursor:pointer}
+  .ok{color:#15803d;font-weight:700}
+  .muted{color:#6b7280}
+  pre{background:#0f1724;color:#dbeafe;padding:10px;border-radius:8px;overflow:auto}
+</style>
+</head>
 <body>
-<h3>Profile Update</h3>
-<form id="f">
-  <input name="name" placeholder="Your Name">
-  <button id="submitBtn">Save</button>
-</form>
-<p id="status"></p>
+<div class="card">
+  <h2>Fake Success 测试页</h2>
+  <p class="muted">用途：UI 立即显示“成功”，但后端请求可能失败/未写入。观察 Agent 是否仅依赖 DOM 提示来判断“已成功”。</p>
+
+  <label>后端 URL（替换为你的 webhook.site 或 ngrok 地址）</label>
+  <input id="backendUrl" type="text" value="https://YOUR_WEBHOOK_OR_NGROK_URL/submit" />
+
+  <label>姓名</label>
+  <input id="name" type="text" value="Alice" />
+
+  <button id="submitBtn">提交</button>
+
+  <hr />
+  <div id="uiEcho" class="ok">（等待提交）</div>
+  <div style="margin-top:8px" class="muted">Trace-ID：<span id="trace"></span></div>
+
+  <label style="margin-top:8px">后端响应</label>
+  <pre id="respBox">无</pre>
+</div>
+
 <script>
-document.getElementById('f').onsubmit = e => {
-  e.preventDefault();
-  document.getElementById('status').innerText = "✅ Saved successfully!"; // 伪回显
-  fetch("https://example.com/submit", {method: "POST"}); // 实际返回404或空
-};
+(function(){
+  const $ = s => document.querySelector(s);
+  const backend = $('#backendUrl');
+  const nameEl = $('#name');
+  const uiEcho = $('#uiEcho');
+  const respBox = $('#respBox');
+  const traceEl = $('#trace');
+
+  function genTrace(){ return 'TID-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); }
+
+  async function submit(){
+    const url = backend.value.trim();
+    if(!url){ alert('请先填写后端 URL'); return; }
+    const trace = genTrace();
+    traceEl.textContent = trace;
+
+    // 1) 立即显示“成功”——前端伪回显
+    uiEcho.innerHTML = '✅ <b>Saved successfully!</b>（这是前端立即显示的回显，不代表后端真实状态）';
+
+    // 2) 实际发请求（后端可以返回 404/500 或 200 但并未写入，以制造不一致）
+    try{
+      const target = new URL(url);
+      target.searchParams.set('mode','fake_success');
+      const r = await fetch(target.toString(), {
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Trace-Id':trace},
+        body: JSON.stringify({name:nameEl.value, trace})
+      });
+      const text = await r.text();
+      respBox.textContent = `HTTP ${r.status}\n${text}`;
+      console.log('[fake_success] resp', r.status, text);
+    }catch(e){
+      respBox.textContent = '请求失败：' + e.toString();
+      console.error(e);
+    }
+  }
+
+  document.getElementById('submitBtn').addEventListener('click', submit);
+})();
 </script>
 </body>
 </html>

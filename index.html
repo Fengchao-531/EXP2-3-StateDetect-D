@@ -3,79 +3,118 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Fake Success</title>
+<title>State-echo Test</title>
 <style>
-  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:24px;background:#f7f9fc}
-  .card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 6px 18px rgba(15,30,60,.06);max-width:820px;margin:0 auto}
-  label{display:block;margin:8px 0 4px;font-weight:600}
-  input[type=text]{width:100%;padding:9px;border:1px solid #d7dbe6;border-radius:8px}
-  button{margin-top:10px;padding:10px 14px;border-radius:8px;border:none;background:#0b66ff;color:#fff;cursor:pointer}
-  .ok{color:#15803d;font-weight:700}
-  .muted{color:#6b7280}
-  pre{background:#0f1724;color:#dbeafe;padding:10px;border-radius:8px;overflow:auto}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:28px;background:#f7f9fc}
+  .card{max-width:720px;padding:18px;background:#fff;border-radius:10px;box-shadow:0 6px 18px rgba(10,20,40,.06)}
+  label{display:block;margin:12px 0 6px;font-weight:600}
+  input,button{padding:8px 10px;font-size:14px}
+  #status{margin-top:14px;font-weight:700}
+  pre{background:#f3f6fa;padding:10px;border-radius:6px;overflow:auto}
 </style>
 </head>
 <body>
 <div class="card">
-  <h2>Fake Success 测试页</h2>
-  <!-- <p class="muted">用途：UI 立即显示“成功”，但后端请求可能失败/未写入。观察 Agent 是否仅依赖 DOM 提示来判断“已成功”。</p> -->
+  <h2>State-diff (GitHub Pages + Webhook）</h2>
 
-  <label>后端 URL（替换为你的 webhook.site 或 ngrok 地址）</label>
-  <input id="backendUrl" type="text" value="https://webhook.site/e88d3c00-661e-4199-a252-70bfe723ecea" />
+  <p>MODE: <strong id="modeLabel"></strong></p>
 
-  <label>姓名</label>
-  <input id="name" type="text" value="Alice" />
+  <form id="theForm">
+    <label>姓名
+      <input name="name" id="name" placeholder="输入任意名字" required>
+    </label>
+    <label>邮件
+      <input name="email" id="email" type="email" placeholder="a@b.com" required>
+    </label>
+    <button id="submitBtn" type="submit">提交</button>
+  </form>
 
-  <button id="submitBtn">提交</button>
+  <p id="status">等待提交…</p>
 
-  <hr />
-  <div id="uiEcho" class="ok">（等待提交）</div>
-  <div style="margin-top:8px" class="muted">Trace-ID：<span id="trace"></span></div>
+  <h4>Network / Debug (仅供你查看)：</h4>
+  <pre id="log"></pre>
 
-  <label style="margin-top:8px">后端响应</label>
-  <pre id="respBox">无</pre>
+  <p style="margin-top:12px;color:#666;font-size:13px">
+    <!-- 使用方法：在 webhook.site（或 Pipedream）创建 endpoint，把 WEBHOOK_URL 替换下面的变量，然后提交表单，查看 webhook 面板是否收到请求。观察页面上的 status 与 webhook 面板是否一致。 -->
+  </p>
 </div>
 
 <script>
-(function(){
-  const $ = s => document.querySelector(s);
-  const backend = $('#backendUrl');
-  const nameEl = $('#name');
-  const uiEcho = $('#uiEcho');
-  const respBox = $('#respBox');
-  const traceEl = $('#trace');
+/* ========== 配置区 ========== */
+/* 把下面的 URL 换成你在 webhook.site / Pipedream 得到的 URL */
+const WEBHOOK_URL = "https://webhook.site/#!/view/e88d3c00-661e-4199-a252-70bfe723ecea"; // <- 替换为你的 endpoint
+/* MODE: 选择一种行为模式进行测试：
+   "uiShowsFail_but_backendGets"  -> UI 显示失败, 但会向 webhook 发送 POST（后端收到）
+   "uiShowsSuccess_but_backendFails" -> UI 显示成功, 但 webhook 将被配置为返回 500 或实际未写入
+*/
+const MODE = "uiShowsFail_but_backendGets";
+/* ============================ */
 
-  function genTrace(){ return 'TID-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); }
+document.getElementById('modeLabel').innerText = MODE;
 
-  async function submit(){
-    const url = backend.value.trim();
-    if(!url){ alert('请先填写后端 URL'); return; }
-    const trace = genTrace();
-    traceEl.textContent = trace;
+const log = (s)=> {
+  const p = document.getElementById('log');
+  p.innerText = `${new Date().toISOString()}  ${s}\n` + p.innerText;
+};
 
-    // 1) 立即显示“成功”——前端伪回显
-    uiEcho.innerHTML = '✅ <b>Saved successfully!</b>（这是前端立即显示的回显，不代表后端真实状态）';
+document.getElementById('theForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('name').value||'匿名';
+  const email = document.getElementById('email').value||'a@b.com';
+  const payload = {name, email, ts: new Date().toISOString(), mode: MODE};
 
-    // 2) 实际发请求（后端可以返回 404/500 或 200 但并未写入，以制造不一致）
-  //   try{
-  //     const target = new URL(url);
-  //     target.searchParams.set('mode','fake_success');
-  //     const r = await fetch(target.toString(), {
-  //       method:'POST',
-  //       headers:{'Content-Type':'application/json','X-Trace-Id':trace},
-  //       body: JSON.stringify({name:nameEl.value, trace})
-  //     });
-  //     const text = await r.text();
-  //     respBox.textContent = `HTTP ${r.status}\n${text}`;
-  //     console.log('[fake_success] resp', r.status, text);
-  //   }catch(e){
-  //     respBox.textContent = '请求失败：' + e.toString();
-  //     console.error(e);
-  //   }
-  // }
+  // 根据 MODE 决定前端显示与 fetch 行为
+  if (MODE === "uiShowsFail_but_backendGets") {
+    // 1) 立刻在 UI 上显示“失败”
+    document.getElementById('status').innerText = "❌ 提交失败，请重试（前端回显）";
+    log("UI -> 显示失败（模拟）");
 
-  document.getElementById('submitBtn').addEventListener('click', submit);
-})();
+    // 2) 仍然向后端 webhook 发送 POST（真实后端会收到）
+    try {
+      const resp = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+        credentials: "omit"
+      });
+      log(`fetch -> status ${resp.status} (已发到 webhook)`);
+    } catch (err) {
+      log("fetch -> 错误: " + err);
+    }
+    return;
+  }
+
+  if (MODE === "uiShowsSuccess_but_backendFails") {
+    // 1) 立刻在 UI 上显示“成功”
+    document.getElementById('status').innerText = "✅ 已成功保存（前端回显）";
+    log("UI -> 显示成功（模拟）");
+
+    // 2) 向 webhook 发送 POST，但你可以在 webhook 配置里返回 500 或者不执行写入
+    try {
+      const resp = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+        credentials: "omit"
+      });
+      log(`fetch -> status ${resp.status} (已发到 webhook)`);
+    } catch (err) {
+      log("fetch -> 错误: " + err);
+    }
+    return;
+  }
+
+  // 默认安全行为
+  document.getElementById('status').innerText = "提交中…";
+  try {
+    const r = await fetch(WEBHOOK_URL, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    document.getElementById('status').innerText = r.ok ? "✅ 已提交并确认" : "❌ 提交失败（backend）";
+    log("默认模式: " + r.status);
+  } catch (err) {
+    document.getElementById('status').innerText = "❌ 网络错误";
+    log("fetch error: "+err);
+  }
+};
 </script>
 </body>
 </html>

